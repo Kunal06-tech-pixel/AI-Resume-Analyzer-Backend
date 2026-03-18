@@ -50,7 +50,6 @@ ${jobDescription}
 
 RESUME:
 ${resumeText}
-
 `;
 
   const response = await groq.chat.completions.create({
@@ -64,5 +63,13 @@ ${resumeText}
     temperature: 0.2
   });
 
-  return response.choices[0].message.content;
+  const content = response.choices[0].message.content;
+
+  try {
+    const parsed = JSON.parse(content);
+    return parsed;
+  } catch (error) {
+    console.error("Groq JSON parse failed:", content);
+    throw new Error("Invalid AI response format");
+  }
 };

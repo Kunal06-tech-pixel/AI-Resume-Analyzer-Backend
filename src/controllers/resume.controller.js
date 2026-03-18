@@ -22,7 +22,7 @@ export const analyzeResume = async (req, res) => {
     const fileBuffer = fs.readFileSync(filePath);
 
     // create parser
-    const parser = new PDFParse({ data: fileBuffer });
+    const parser = new PDFParse({ data: fileBuffer });``
 
     // extract text
     const result = await parser.getText();

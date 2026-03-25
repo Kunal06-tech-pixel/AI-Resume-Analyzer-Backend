@@ -31,6 +31,7 @@ Return JSON in this format:
 
 {
   "name": "",
+  "summary": "Write a clear professional SUMMARY (2-3 lines) describing resume quality and improvement scope.",
   "role_match": "",
   "skills_match": [],
   "missing_keywords": [],

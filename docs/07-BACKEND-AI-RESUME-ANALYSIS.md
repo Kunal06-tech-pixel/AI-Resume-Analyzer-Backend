@@ -10,4 +10,4 @@
 ## Features Implemented
 - AI-powered resume evaluation
 - ATS score generation
-- Structured analysis response API
+- Structured analysis response API.

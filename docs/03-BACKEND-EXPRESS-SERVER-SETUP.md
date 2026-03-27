@@ -10,4 +10,4 @@
 ## Features Implemented
 - Functional Express backend server
 - Initial API routing structure
-- Scalable backend project architecture
+- Scalable backend project architecture.

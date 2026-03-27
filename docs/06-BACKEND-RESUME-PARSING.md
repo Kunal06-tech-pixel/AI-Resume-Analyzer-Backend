@@ -10,4 +10,4 @@
 ## Features Implemented
 - Resume text extraction system
 - Backend parsing pipeline for uploaded resumes
-- Structured text output for further AI processing
+- Structured text output for further AI processing.

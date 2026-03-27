@@ -11,4 +11,4 @@
 ## Features Implemented
 - Resume file upload system using Multer
 - Server-side storage for uploaded resumes
-- Validation setup for supported resume file formats (PDF, DOC, DOCX)
+- Validation setup for supported resume file formats (PDF, DOC, DOCX).

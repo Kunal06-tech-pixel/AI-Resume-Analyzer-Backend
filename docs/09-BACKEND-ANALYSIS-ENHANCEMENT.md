@@ -10,4 +10,4 @@
 ## Features Implemented
 - Improved ATS scoring logic
 - Enhanced keyword and skills analysis
-- Optimized backend response performance
+- Optimized backend response performance.

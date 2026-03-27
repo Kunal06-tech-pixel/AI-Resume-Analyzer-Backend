@@ -11,4 +11,4 @@
 ## Features Implemented
 - Secure authentication system using JWT
 - Token-based user session management
-- Protected backend route structure
+- Protected backend route structure.

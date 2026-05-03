@@ -1,51 +1,66 @@
 import express from "express";
+import fs from "fs";
+import path from "path";
 import multer from "multer";
-import { analyzeResume } from "../controllers/resume.controller.js";
-import { analyzeResumeWithGroq } from "../services/groq.service.js"; // ✅ ADD THIS
+import {
+  analyzeResume,
+  analyzeResumeText,
+  getAnalysisById,
+  listAnalyses,
+} from "../controllers/resume.controller.js";
+import protect from "../middleware/auth.middleware.js";
 
 const router = express.Router();
+const uploadDir = path.resolve("uploads");
 
-/* ================= MULTER (FILE UPLOAD) ================= */
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "uploads/");
+    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    cb(null, Date.now() + "-" + file.originalname);
+    cb(null, `${Date.now()}-${file.originalname}`);
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+  fileFilter: function (req, file, cb) {
+    const extension = path.extname(file.originalname).toLowerCase();
+    const isPdf = file.mimetype === "application/pdf" || extension === ".pdf";
 
-/* ================= EXISTING ROUTE ================= */
-router.post("/upload", upload.single("resume"), analyzeResume);
-
-
-/* ================= NEW TEXT ANALYZE ROUTE ================= */
-router.post("/analyze-text", async (req, res) => {
-  try {
-    const { resumeText } = req.body;
-
-    if (!resumeText) {
-      return res.status(400).json({ error: "Resume text is required" });
+    if (!isPdf) {
+      return cb(new Error("Only PDF resumes are supported"));
     }
 
-    const result = await analyzeResumeWithGroq(
-      resumeText,
-      "",
-      ""
-    );
-
-    res.json({
-      analysis: {
-        raw_output: result
-      }
-    });
-
-  } catch (error) {
-    console.error("Analyze-text error:", error);
-    res.status(500).json({ error: "Analysis failed" });
-  }
+    return cb(null, true);
+  },
 });
+
+const uploadResume = (req, res, next) => {
+  upload.single("resume")(req, res, (error) => {
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    return next();
+  });
+};
+
+router.use(protect);
+
+router.get("/analyses", listAnalyses);
+router.get("/analyses/:id", getAnalysisById);
+router.post("/upload", uploadResume, analyzeResume);
+router.post("/analyze-text", analyzeResumeText);
 
 export default router;

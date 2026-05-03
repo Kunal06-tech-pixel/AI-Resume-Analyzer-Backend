@@ -7,6 +7,28 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
+const parseJsonResponse = (content) => {
+  const trimmed = String(content || "").trim();
+  const withoutFence = trimmed
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(withoutFence);
+  } catch {
+    const start = withoutFence.indexOf("{");
+    const end = withoutFence.lastIndexOf("}");
+
+    if (start !== -1 && end !== -1 && end > start) {
+      return JSON.parse(withoutFence.slice(start, end + 1));
+    }
+
+    throw new Error("Invalid AI response format");
+  }
+};
+
 
 // ======================= ATS ANALYZER (UNCHANGED) =======================
 
@@ -30,15 +52,22 @@ STRICT RULES:
 6. Do NOT return empty arrays unless absolutely necessary.
 7. Return ONLY JSON.
 
-Return JSON in this format:
+Return JSON in this exact format:
 
 {
-  "name": "",
   "summary": "Write a clear professional SUMMARY (2-3 lines)",
   "role_match": "",
+  "strengths": [
+    "Strong technical skills in relevant areas"
+  ],
+  "weaknesses": [
+    "Missing measurable impact in some bullets"
+  ],
+  "skills_detected": [],
+  "missing_skills": [],
   "skills_match": [],
   "missing_keywords": [],
-  "experience_years": "",
+  "experience_analysis": "Analyze career growth, project impact, responsibilities, and relevance to the target role.",
   "ats_score": {
       "score": 0,
       "level": ""
@@ -65,7 +94,7 @@ ${resumeText}
   const content = response.choices[0].message.content;
 
   try {
-    const parsed = JSON.parse(content);
+    const parsed = parseJsonResponse(content);
     return parsed;
   } catch (error) {
     console.error("Groq JSON parse failed:", content);

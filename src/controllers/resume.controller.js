@@ -1,8 +1,11 @@
+import { createRequire } from "module";
 import fs from "fs/promises";
 import mongoose from "mongoose";
-import { PDFParse } from "pdf-parse";
 import Analysis from "../models/Analysis.js";
 import { analyzeResumeWithGroq } from "../services/groq.service.js";
+
+const require = createRequire(import.meta.url);
+const { PDFParse } = require("pdf-parse"); // pdf-parse v2 uses named exports
 
 const clampScore = (score) => {
   const value = Number(score);

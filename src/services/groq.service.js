@@ -1,11 +1,18 @@
-import dotenv from "dotenv";
-dotenv.config();
-
+// dotenv is loaded in server.js before this module is imported
 import Groq from "groq-sdk";
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+let groq;
+
+const ensureGroq = () => {
+  if (!groq) {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      throw new Error("Groq API key is not configured. Set GROQ_API_KEY in your .env file.");
+    }
+    groq = new Groq({ apiKey });
+  }
+  return groq;
+};
 
 const parseJsonResponse = (content) => {
   const trimmed = String(content || "").trim();
@@ -85,7 +92,7 @@ RESUME:
 ${resumeText}
 `;
 
-  const response = await groq.chat.completions.create({
+  const response = await ensureGroq().chat.completions.create({
     model: "openai/gpt-oss-120b",
     messages: [{ role: "user", content: prompt }],
     temperature: 0.2
@@ -170,7 +177,7 @@ Return ONLY 3 to 5 certifications, each on a NEW LINE.
       throw new Error("Invalid AI section");
   }
 
-  const response = await groq.chat.completions.create({
+  const response = await ensureGroq().chat.completions.create({
     model: "openai/gpt-oss-120b",
     messages: [{ role: "user", content: prompt }],
     temperature: 0.3

@@ -9,7 +9,8 @@ import connectDB from "./config/db.js";
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import resumeRoutes from "./routes/resume.routes.js";
-import aiRoutes from "./routes/ai.routes.js"; // ✅ NEW
+import aiRoutes from "./routes/ai.routes.js";
+import chatRoutes from "./routes/chat.routes.js"; // ✅ NEW
 
 const app = express();
 
@@ -29,7 +30,8 @@ app.use(cookieParser());
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/resume", resumeRoutes);
-app.use("/api/ai", aiRoutes); // ✅ NEW ROUTE ADDED
+app.use("/api/ai", aiRoutes);
+app.use("/api/chat", chatRoutes); // ✅ NEW CHAT ROUTE
 
 app.get("/", (req, res) => {
   res.send("API is running...");

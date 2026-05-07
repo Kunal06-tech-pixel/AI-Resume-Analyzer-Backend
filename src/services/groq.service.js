@@ -186,3 +186,83 @@ Return ONLY 3 to 5 certifications, each on a NEW LINE.
 
   return cleaned;
 };
+
+
+// ======================= CHAT WITH RESUME CONTEXT =======================
+
+export const chatWithGroq = async (userMessage, resumeContext, chatHistory = []) => {
+  
+  const systemPrompt = `You are an expert resume advisor and career coach. You have access to the user's resume analysis and can provide personalized advice.
+
+RESUME CONTEXT:
+- File: ${resumeContext.fileName}
+- Job Title: ${resumeContext.jobTitle || 'Not specified'}
+- Company: ${resumeContext.companyName || 'Not specified'}
+- ATS Score: ${resumeContext.atsScore?.score || 0}/100 (${resumeContext.atsScore?.level || 'N/A'})
+- AI Score: ${resumeContext.aiScore || 'N/A'}
+- Semantic Score: ${resumeContext.semanticScore || 'N/A'}
+
+SUMMARY:
+${resumeContext.summary || 'No summary available'}
+
+STRENGTHS:
+${resumeContext.strengths?.join('\n- ') || 'None listed'}
+
+WEAKNESSES:
+${resumeContext.weaknesses?.join('\n- ') || 'None listed'}
+
+SKILLS DETECTED:
+${resumeContext.skillsDetected?.join(', ') || 'None'}
+
+MISSING SKILLS:
+${resumeContext.missingSkills?.join(', ') || 'None'}
+
+EXPERIENCE ANALYSIS:
+${resumeContext.experienceAnalysis || 'No analysis available'}
+
+SUGGESTIONS FOR IMPROVEMENT:
+${resumeContext.suggestions?.join('\n- ') || 'None'}
+
+YOUR ROLE:
+- Answer questions about the resume
+- Provide specific, actionable advice
+- Explain the ATS score and how to improve it
+- Suggest improvements based on the analysis
+- Help with career guidance
+- Be conversational and helpful
+
+RULES:
+- Keep responses concise (2-4 paragraphs max)
+- Be specific and reference the actual resume data
+- Provide actionable advice
+- Be encouraging but honest
+- If asked about something not in the context, say you don't have that information`;
+
+  // Build messages array
+  const messages = [
+    { role: "system", content: systemPrompt }
+  ];
+
+  // Add chat history
+  chatHistory.forEach(msg => {
+    messages.push({
+      role: msg.role,
+      content: msg.content
+    });
+  });
+
+  // Add current user message
+  messages.push({
+    role: "user",
+    content: userMessage
+  });
+
+  const response = await groq.chat.completions.create({
+    model: "openai/gpt-oss-120b",
+    messages: messages,
+    temperature: 0.7,
+    max_tokens: 1000
+  });
+
+  return response.choices[0].message.content;
+};

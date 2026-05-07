@@ -174,8 +174,12 @@ const serializeAnalysis = (analysis) => {
 
     updatedAt: doc.updatedAt,
 
-    // ✅ NEW NLP INFO
+    // ✅ NLP & SCORING INFO
     similarity: doc.similarity || 0,
+    
+    semanticScore: doc.semanticScore || 0,
+    
+    aiScore: doc.aiScore || 0,
 
     embeddingModel: doc.embeddingModel || "all-MiniLM-L6-v2",
 
@@ -215,6 +219,15 @@ export const analyzeResume = async (req, res) => {
 
     // ================= PDF PARSE =================
 
+    console.log("\n" + "=".repeat(70));
+    console.log("📄 STARTING RESUME ANALYSIS");
+    console.log("=".repeat(70));
+    console.log(`File: ${req.file.originalname}`);
+    console.log(`Size: ${req.file.size} bytes`);
+    console.log(`Job Title: ${req.body.jobTitle || 'N/A'}`);
+    console.log(`Company: ${req.body.companyName || 'N/A'}`);
+    console.log("");
+
     const fileBuffer = await fs.readFile(req.file.path);
 
     const parser = new PDFParse({
@@ -232,11 +245,19 @@ export const analyzeResume = async (req, res) => {
       });
     }
 
+    console.log("✅ PDF text extracted successfully");
+    console.log(`   Total characters: ${resumeText.length}`);
+    console.log(`   Preview: "${resumeText.substring(0, 100).replace(/\n/g, ' ')}..."\n`);
+
     // ================= EMBEDDINGS =================
 
+    console.log("🧠 STEP 1: Generating Resume Embedding");
+    console.log("-".repeat(70));
     const resumeEmbedding =
       await generateEmbedding(resumeText);
 
+    console.log("🎯 STEP 2: Generating Job Description Embedding");
+    console.log("-".repeat(70));
     const jobEmbedding =
       await generateEmbedding(
         req.body.jobDescription || ""
@@ -244,6 +265,8 @@ export const analyzeResume = async (req, res) => {
 
     // ================= COSINE SIMILARITY =================
 
+    console.log("🔬 STEP 3: Computing Semantic Similarity");
+    console.log("-".repeat(70));
     const similarity = cosineSimilarity(
       resumeEmbedding,
       jobEmbedding
@@ -253,8 +276,16 @@ export const analyzeResume = async (req, res) => {
       similarity * 100
     );
 
+    console.log("💾 STEP 4: Storing Embedding in Vector Database");
+    console.log("-".repeat(70));
+    console.log(`   Embedding dimensions: ${resumeEmbedding.length}`);
+    console.log(`   Model: all-MiniLM-L6-v2`);
+    console.log(`   Storage: MongoDB (Analysis collection)\n`);
+
     // ================= AI ANALYSIS =================
 
+    console.log("🤖 STEP 5: Running AI Analysis with Groq");
+    console.log("-".repeat(70));
     const aiResponse =
       await analyzeResumeWithGroq(
         resumeText,
@@ -265,19 +296,36 @@ export const analyzeResume = async (req, res) => {
     const normalized =
       normalizeAnalysis(aiResponse);
 
-    // ✅ merge semantic score into AI score
-    normalized.atsScore.score = semanticScore;
+    console.log("✅ AI analysis completed\n");
 
-    if (semanticScore >= 75) {
+    // ✅ HYBRID SCORING: Combine AI score (70%) + Semantic score (30%)
+    console.log("📊 STEP 6: Calculating Hybrid ATS Score");
+    console.log("-".repeat(70));
+    const aiScore = normalized.atsScore.score || 0;
+    const hybridScore = Math.round((aiScore * 0.7) + (semanticScore * 0.3));
+    
+    console.log(`   AI Score: ${aiScore}`);
+    console.log(`   Semantic Score: ${semanticScore}`);
+    console.log(`   Hybrid Score: ${hybridScore} (70% AI + 30% Semantic)`);
+    
+    normalized.atsScore.score = hybridScore;
+    normalized.semanticScore = semanticScore;
+    normalized.aiScore = aiScore;
+
+    if (hybridScore >= 75) {
       normalized.atsScore.level = "High";
-    } else if (semanticScore >= 45) {
+    } else if (hybridScore >= 45) {
       normalized.atsScore.level = "Medium";
     } else {
       normalized.atsScore.level = "Low";
     }
+    
+    console.log(`   Final Level: ${normalized.atsScore.level}\n`);
 
     // ================= SAVE =================
 
+    console.log("💾 STEP 7: Saving Analysis to Database");
+    console.log("-".repeat(70));
     const analysis = await Analysis.create({
       user: req.userId,
 
@@ -293,6 +341,10 @@ export const analyzeResume = async (req, res) => {
         req.body.jobDescription || "",
 
       similarity,
+      
+      semanticScore,
+      
+      aiScore: normalized.aiScore,
 
       embeddingModel:
         "all-MiniLM-L6-v2",
@@ -306,7 +358,17 @@ export const analyzeResume = async (req, res) => {
       ...normalized,
     });
 
+    console.log(`✅ Analysis saved with ID: ${analysis._id}`);
+    console.log(`   Embedding stored: ${analysis.embedding.length} dimensions`);
+    console.log(`   Suggestions: ${analysis.suggestions?.length || 0}`);
+    console.log(`   Skills detected: ${analysis.skillsDetected?.length || 0}`);
+    console.log(`   Missing skills: ${analysis.missingSkills?.length || 0}\n`);
+
     // ================= RESPONSE =================
+
+    console.log("=".repeat(70));
+    console.log("✅ RESUME ANALYSIS COMPLETED SUCCESSFULLY");
+    console.log("=".repeat(70) + "\n");
 
     return res.status(201).json({
       success: true,
@@ -342,12 +404,53 @@ export const analyzeResume = async (req, res) => {
 export const listAnalyses = async (req, res) => {
   try {
 
+    console.log("\n" + "=".repeat(70));
+    console.log("📋 RETRIEVING USER ANALYSES FROM DATABASE");
+    console.log("=".repeat(70));
+    console.log(`User ID: ${req.userId}\n`);
+
     const analyses = await Analysis.find({
       user: req.userId,
     })
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
+
+    console.log(`✅ Retrieved ${analyses.length} analyses`);
+    
+    // Log embedding info for each analysis
+    const withEmbeddings = analyses.filter(a => a.embedding && a.embedding.length > 0);
+    console.log(`   - With embeddings: ${withEmbeddings.length}`);
+    console.log(`   - Without embeddings: ${analyses.length - withEmbeddings.length}\n`);
+
+    if (withEmbeddings.length > 0) {
+      console.log("📊 EMBEDDINGS RETRIEVED FROM DATABASE:");
+      
+      withEmbeddings.slice(0, 2).forEach((analysis, index) => {
+        console.log(`\n   ${index + 1}. ${analysis.fileName}`);
+        console.log(`      Model: ${analysis.embeddingModel}`);
+        console.log(`      Dimensions: ${analysis.embedding.length}`);
+        console.log(`      Similarity Score: ${(analysis.similarity * 100).toFixed(2)}%`);
+        
+        console.log(`\n      embedding: Array (${analysis.embedding.length})`);
+        
+        // Show first 20 values
+        const displayCount = Math.min(20, analysis.embedding.length);
+        for (let i = 0; i < displayCount; i++) {
+          console.log(`         ${i}: ${analysis.embedding[i]}`);
+        }
+        
+        if (analysis.embedding.length > 20) {
+          console.log(`         ... (${analysis.embedding.length - 20} more values)`);
+        }
+      });
+      
+      if (withEmbeddings.length > 2) {
+        console.log(`\n   ... and ${withEmbeddings.length - 2} more analyses with embeddings`);
+      }
+    }
+
+    console.log("\n" + "=".repeat(70) + "\n");
 
     return res.json({
       success: true,
@@ -361,7 +464,7 @@ export const listAnalyses = async (req, res) => {
   } catch (error) {
 
     console.error(
-      "List analyses error:",
+      "❌ List analyses error:",
       error
     );
 
@@ -378,11 +481,18 @@ export const listAnalyses = async (req, res) => {
 export const getAnalysisById = async (req, res) => {
   try {
 
+    console.log("\n" + "=".repeat(70));
+    console.log("🔍 RETRIEVING SINGLE ANALYSIS FROM DATABASE");
+    console.log("=".repeat(70));
+    console.log(`Analysis ID: ${req.params.id}`);
+    console.log(`User ID: ${req.userId}\n`);
+
     if (
       !mongoose.Types.ObjectId.isValid(
         req.params.id
       )
     ) {
+      console.log("❌ Invalid ObjectId format\n");
       return res.status(404).json({
         success: false,
         message: "Analysis not found",
@@ -396,11 +506,48 @@ export const getAnalysisById = async (req, res) => {
       }).lean();
 
     if (!analysis) {
+      console.log("❌ Analysis not found in database\n");
       return res.status(404).json({
         success: false,
         message: "Analysis not found",
       });
     }
+
+    console.log("✅ Analysis retrieved successfully");
+    console.log(`   File: ${analysis.fileName}`);
+    console.log(`   Job Title: ${analysis.jobTitle || 'N/A'}`);
+    console.log(`   ATS Score: ${analysis.atsScore?.score || 0} (${analysis.atsScore?.level || 'N/A'})`);
+    
+    if (analysis.embedding && analysis.embedding.length > 0) {
+      console.log("\n🧠 EMBEDDING RETRIEVED FROM DATABASE:");
+      console.log(`   Model: ${analysis.embeddingModel}`);
+      console.log(`   Dimensions: ${analysis.embeddingDimensions}`);
+      console.log(`   Vector Length: ${analysis.embedding.length}`);
+      console.log(`   Similarity: ${(analysis.similarity * 100).toFixed(2)}%`);
+      console.log(`   Semantic Score: ${analysis.semanticScore || 'N/A'}`);
+      console.log(`   AI Score: ${analysis.aiScore || 'N/A'}`);
+      
+      console.log("\n📊 EMBEDDING ARRAY VALUES:");
+      console.log("   embedding: Array (" + analysis.embedding.length + ")");
+      
+      // Log first 50 values in detail
+      const displayCount = Math.min(50, analysis.embedding.length);
+      for (let i = 0; i < displayCount; i++) {
+        console.log(`      ${i}: ${analysis.embedding[i]}`);
+      }
+      
+      if (analysis.embedding.length > 50) {
+        console.log(`      ... (${analysis.embedding.length - 50} more values)`);
+        console.log(`      ... showing last 10 values:`);
+        for (let i = analysis.embedding.length - 10; i < analysis.embedding.length; i++) {
+          console.log(`      ${i}: ${analysis.embedding[i]}`);
+        }
+      }
+    } else {
+      console.log("\n⚠️  No embedding stored for this analysis");
+    }
+
+    console.log("\n" + "=".repeat(70) + "\n");
 
     return res.json({
       success: true,
@@ -412,7 +559,7 @@ export const getAnalysisById = async (req, res) => {
   } catch (error) {
 
     console.error(
-      "Get analysis error:",
+      "❌ Get analysis error:",
       error
     );
 
@@ -469,8 +616,21 @@ export const analyzeResumeText = async (req, res) => {
     const normalized =
       normalizeAnalysis(aiResponse);
 
-    normalized.atsScore.score =
-      semanticScore;
+    // ✅ HYBRID SCORING: Combine AI score (70%) + Semantic score (30%)
+    const aiScore = normalized.atsScore.score || 0;
+    const hybridScore = Math.round((aiScore * 0.7) + (semanticScore * 0.3));
+    
+    normalized.atsScore.score = hybridScore;
+    normalized.semanticScore = semanticScore;
+    normalized.aiScore = aiScore;
+
+    if (hybridScore >= 75) {
+      normalized.atsScore.level = "High";
+    } else if (hybridScore >= 45) {
+      normalized.atsScore.level = "Medium";
+    } else {
+      normalized.atsScore.level = "Low";
+    }
 
     return res.json({
       success: true,

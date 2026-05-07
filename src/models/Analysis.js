@@ -126,6 +126,11 @@ const analysisSchema = new mongoose.Schema(
       default: 0,
     },
 
+    aiScore: {
+      type: Number,
+      default: 0,
+    },
+
     keywordScore: {
       type: Number,
       default: 0,

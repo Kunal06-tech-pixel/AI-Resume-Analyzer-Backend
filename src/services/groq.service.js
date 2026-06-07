@@ -7,6 +7,49 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
+const ANALYSIS_ARRAY_FIELDS = [
+  "strengths",
+  "weaknesses",
+  "skills_detected",
+  "missing_skills",
+  "skills_match",
+  "missing_keywords",
+  "suggestions",
+];
+
+const clampScore = (score) => {
+  const value = Number(score);
+
+  if (!Number.isFinite(value)) return 0;
+
+  return Math.max(0, Math.min(100, Math.round(value)));
+};
+
+const getAtsLevel = (score) => {
+  if (score >= 71) return "High";
+  if (score >= 41) return "Medium";
+  return "Low";
+};
+
+const toStringValue = (value) => {
+  if (typeof value === "string") return value.trim();
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
+};
+
+const toStringArray = (value) => {
+  if (typeof value === "string") {
+    const item = toStringValue(value);
+    return item ? [item] : [];
+  }
+
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => toStringValue(item))
+    .filter(Boolean);
+};
+
 const parseJsonResponse = (content) => {
   const trimmed = String(content || "").trim();
   const withoutFence = trimmed
@@ -29,65 +72,106 @@ const parseJsonResponse = (content) => {
   }
 };
 
+const normalizeAnalysisResponse = (payload) => {
+  const normalized = {
+    ...payload,
+  };
 
-// ======================= ATS ANALYZER (UNCHANGED) =======================
+  ANALYSIS_ARRAY_FIELDS.forEach((field) => {
+    normalized[field] = toStringArray(normalized[field]);
+  });
+
+  normalized.summary = toStringValue(normalized.summary);
+  normalized.role_match = toStringValue(normalized.role_match);
+  normalized.experience_analysis = toStringValue(
+    normalized.experience_analysis
+  );
+
+  const score = clampScore(normalized.ats_score?.score);
+
+  normalized.ats_score = {
+    score,
+    level: getAtsLevel(score),
+  };
+
+  return normalized;
+};
+
+
+// ======================= ATS ANALYZER =======================
 
 export const analyzeResumeWithGroq = async (resumeText, jobDescription, jobTitle) => {
 
-  const prompt = `
-You are an ATS (Applicant Tracking System).
+  const systemPrompt = `
+You are an ATS resume analyst. Compare the resume against the target job and return only valid JSON.
 
-Your job is to compare the resume with the job description and evaluate how well they match.
+Output rules:
+- Return one JSON object only. Do not include markdown, comments, or explanatory text.
+- Use exactly the requested keys and keep every array as an array of strings.
+- Base the analysis only on the provided resume and job description.
+- Do not invent experience, metrics, certifications, tools, companies, or education.
+- Avoid empty arrays when useful evidence exists, but use [] when the field truly has no support.
 
-STRICT RULES:
+Scoring rules:
+- Score from 0 to 100 based on role fit, required skills, relevant experience, impact, keywords, and clarity.
+- 0-40 = Low: weak match, major missing requirements, or unclear resume evidence.
+- 41-70 = Medium: partial match with several gaps or limited role-specific evidence.
+- 71-100 = High: strong match with most key requirements clearly supported.
+- The ats_score.level must match the score range.
 
-1. ATS SCORE must be between 0 and 100.
-2. Also classify the score:
-   - 0–40 → Low
-   - 41–70 → Medium
-   - 71–100 → High
-3. Extract important keywords from the JOB DESCRIPTION.
-4. Compare them with the RESUME.
-5. List the missing keywords.
-6. Do NOT return empty arrays unless absolutely necessary.
-7. Return ONLY JSON.
+Field rules:
+- summary: exactly 2 concise professional sentences.
+- role_match: 1 sentence explaining fit for the target role.
+- strengths: 3 to 5 concrete strengths proven by the resume.
+- weaknesses: 3 to 5 concrete gaps or weak areas compared with the job description.
+- skills_detected: important skills/tools/technologies found in the resume.
+- skills_match: job-description skills that are also found in the resume.
+- missing_skills: important job-description skills absent or not clearly supported in the resume.
+- missing_keywords: important ATS keywords from the job description missing from the resume wording.
+- experience_analysis: 2 to 3 sentences on relevance, responsibility level, project impact, and career alignment.
+- suggestions: 4 to 6 direct resume improvements, written as actionable sentences.
+`.trim();
 
+  const userPrompt = `
 Return JSON in this exact format:
 
 {
-  "summary": "Write a clear professional SUMMARY (2-3 lines)",
+  "summary": "",
   "role_match": "",
-  "strengths": [
-    "Strong technical skills in relevant areas"
-  ],
-  "weaknesses": [
-    "Missing measurable impact in some bullets"
-  ],
+  "strengths": [],
+  "weaknesses": [],
   "skills_detected": [],
   "missing_skills": [],
   "skills_match": [],
   "missing_keywords": [],
-  "experience_analysis": "Analyze career growth, project impact, responsibilities, and relevance to the target role.",
+  "experience_analysis": "",
   "ats_score": {
-      "score": 0,
-      "level": ""
+    "score": 0,
+    "level": ""
   },
   "suggestions": []
 }
 
 JOB TITLE:
-${jobTitle}
+${jobTitle || "Not specified"}
 
 JOB DESCRIPTION:
-${jobDescription}
+<<<JOB_DESCRIPTION
+${jobDescription || ""}
+JOB_DESCRIPTION
 
 RESUME:
-${resumeText}
-`;
+<<<RESUME
+${resumeText || ""}
+RESUME
+`.trim();
 
   const response = await groq.chat.completions.create({
     model: "openai/gpt-oss-120b",
-    messages: [{ role: "user", content: prompt }],
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
     temperature: 0.2
   });
 
@@ -95,7 +179,7 @@ ${resumeText}
 
   try {
     const parsed = parseJsonResponse(content);
-    return parsed;
+    return normalizeAnalysisResponse(parsed);
   } catch (error) {
     console.error("Groq JSON parse failed:", content);
     throw new Error("Invalid AI response format");
@@ -103,7 +187,7 @@ ${resumeText}
 };
 
 
-// ======================= AI SUGGESTIONS (FIXED FOR SHORT CONTENT) =======================
+// ======================= AI SUGGESTIONS =======================
 
 export const improveSectionWithGroq = async (section, text) => {
 
@@ -116,13 +200,14 @@ export const improveSectionWithGroq = async (section, text) => {
 Rewrite the following experience into concise ATS-friendly bullet points.
 
 STRICT RULES:
-- Maximum 8–12 words per line
+- Maximum 8-12 words per line
 - Each point must be ONE line only
 - Start with strong action verbs (Built, Developed, Optimized, Led)
-- Include measurable results (%, users, performance) if possible
+- Include measurable results only when they are present or clearly implied
 - Remove filler words ("responsible for", "worked on")
 - DO NOT use "-" or bullet symbols
 - Return ONLY 3 to 5 lines
+- Do not invent numbers, employers, tools, or outcomes
 
 Text:
 ${text}
@@ -134,12 +219,13 @@ ${text}
 Rewrite the following project into concise resume bullet points.
 
 STRICT RULES:
-- Maximum 8–12 words per line
+- Maximum 8-12 words per line
 - Each point must be ONE line only
 - Mention technologies clearly
 - Focus on impact and results
 - DO NOT use "-" or bullet symbols
 - Return ONLY 3 to 5 lines
+- Do not invent numbers, users, tools, or outcomes
 
 Text:
 ${text}
@@ -148,21 +234,23 @@ ${text}
 
     case "skills":
       prompt = `
-Suggest relevant technical and soft skills based on:
+Suggest relevant technical and soft skills based only on this text:
 
 ${text}
 
-Return ONLY comma-separated values (no explanation).
+Return ONLY comma-separated values.
+Do not include explanations, categories, or skills unrelated to the text.
 `;
       break;
 
     case "certifications":
       prompt = `
-Suggest relevant certifications for:
+Suggest relevant certifications for this background:
 
 ${text}
 
 Return ONLY 3 to 5 certifications, each on a NEW LINE.
+Prefer realistic certifications aligned with the provided skills or target role.
 `;
       break;
 
@@ -178,10 +266,12 @@ Return ONLY 3 to 5 certifications, each on a NEW LINE.
 
   const content = response.choices[0].message.content;
 
-  // ✅ CLEAN OUTPUT (NO CHANGE IN FLOW)
-  const cleaned = content
-    .split("\n")
-    .map(line => line.replace(/^[-•]/, "").trim())
+  const lines = section === "skills"
+    ? content.split("\n").flatMap(line => line.split(","))
+    : content.split("\n");
+
+  const cleaned = lines
+    .map(line => line.replace(/^[-*\u2022]\s*/, "").replace(/^\d+[.)]\s*/, "").trim())
     .filter(line => line.length > 0);
 
   return cleaned;
@@ -236,14 +326,13 @@ RULES:
 - Be specific and reference the actual resume data
 - Provide actionable advice
 - Be encouraging but honest
-- If asked about something not in the context, say you don't have that information`;
+- If asked about something not in the context, say you don't have that information
+- Do not invent resume details, company requirements, scores, or user background`;
 
-  // Build messages array
   const messages = [
     { role: "system", content: systemPrompt }
   ];
 
-  // Add chat history
   chatHistory.forEach(msg => {
     messages.push({
       role: msg.role,
@@ -251,7 +340,6 @@ RULES:
     });
   });
 
-  // Add current user message
   messages.push({
     role: "user",
     content: userMessage

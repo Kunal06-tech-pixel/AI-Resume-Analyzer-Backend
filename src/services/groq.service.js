@@ -7,30 +7,6 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-const ANALYSIS_ARRAY_FIELDS = [
-  "strengths",
-  "weaknesses",
-  "skills_detected",
-  "missing_skills",
-  "skills_match",
-  "missing_keywords",
-  "suggestions",
-];
-
-const clampScore = (score) => {
-  const value = Number(score);
-
-  if (!Number.isFinite(value)) return 0;
-
-  return Math.max(0, Math.min(100, Math.round(value)));
-};
-
-const getAtsLevel = (score) => {
-  if (score >= 71) return "High";
-  if (score >= 41) return "Medium";
-  return "Low";
-};
-
 const toStringValue = (value) => {
   if (typeof value === "string") return value.trim();
   if (value === null || value === undefined) return "";
@@ -72,83 +48,35 @@ const parseJsonResponse = (content) => {
   }
 };
 
-const normalizeAnalysisResponse = (payload) => {
-  const normalized = {
-    ...payload,
-  };
-
-  ANALYSIS_ARRAY_FIELDS.forEach((field) => {
-    normalized[field] = toStringArray(normalized[field]);
-  });
-
-  normalized.summary = toStringValue(normalized.summary);
-  normalized.role_match = toStringValue(normalized.role_match);
-  normalized.experience_analysis = toStringValue(
-    normalized.experience_analysis
-  );
-
-  const score = clampScore(normalized.ats_score?.score);
-
-  normalized.ats_score = {
-    score,
-    level: getAtsLevel(score),
-  };
-
-  return normalized;
-};
+const normalizeSuggestionsResponse = (payload) =>
+  toStringArray(payload?.suggestions).slice(0, 6);
 
 
-// ======================= ATS ANALYZER =======================
+// ======================= RESUME SUGGESTIONS =======================
 
-export const analyzeResumeWithGroq = async (resumeText, jobDescription, jobTitle) => {
+export const generateSuggestionsWithGroq = async ({
+  resumeText,
+  jobDescription,
+  jobTitle,
+  analysis,
+}) => {
 
   const systemPrompt = `
-You are an ATS resume analyst. Compare the resume against the target job and return only valid JSON.
+You are an ATS resume improvement advisor. The local analysis engine has already calculated all scores and skill matches. Return only improvement suggestions as valid JSON.
 
 Output rules:
-- Return one JSON object only. Do not include markdown, comments, or explanatory text.
-- Use exactly the requested keys and keep every array as an array of strings.
-- Base the analysis only on the provided resume and job description.
+- Return exactly one object with one key named "suggestions".
+- The suggestions value must be an array containing 4 to 6 concise strings.
+- Base every suggestion only on the supplied resume, job description, and local analysis.
 - Do not invent experience, metrics, certifications, tools, companies, or education.
-- Avoid empty arrays when useful evidence exists, but use [] when the field truly has no support.
-
-Scoring rules:
-- Score from 0 to 100 based on role fit, required skills, relevant experience, impact, keywords, and clarity.
-- 0-40 = Low: weak match, major missing requirements, or unclear resume evidence.
-- 41-70 = Medium: partial match with several gaps or limited role-specific evidence.
-- 71-100 = High: strong match with most key requirements clearly supported.
-- The ats_score.level must match the score range.
-
-Field rules:
-- summary: exactly 2 concise professional sentences.
-- role_match: 1 sentence explaining fit for the target role.
-- strengths: 3 to 5 concrete strengths proven by the resume.
-- weaknesses: 3 to 5 concrete gaps or weak areas compared with the job description.
-- skills_detected: important skills/tools/technologies found in the resume.
-- skills_match: job-description skills that are also found in the resume.
-- missing_skills: important job-description skills absent or not clearly supported in the resume.
-- missing_keywords: important ATS keywords from the job description missing from the resume wording.
-- experience_analysis: 2 to 3 sentences on relevance, responsibility level, project impact, and career alignment.
-- suggestions: 4 to 6 direct resume improvements, written as actionable sentences.
+- Do not calculate or return a score, summary, skill list, strengths, weaknesses, or role match.
+- Prioritize missing target skills, missing keywords, evidence gaps, quantified impact, and ATS-readable wording.
 `.trim();
 
   const userPrompt = `
 Return JSON in this exact format:
 
 {
-  "summary": "",
-  "role_match": "",
-  "strengths": [],
-  "weaknesses": [],
-  "skills_detected": [],
-  "missing_skills": [],
-  "skills_match": [],
-  "missing_keywords": [],
-  "experience_analysis": "",
-  "ats_score": {
-    "score": 0,
-    "level": ""
-  },
   "suggestions": []
 }
 
@@ -159,6 +87,13 @@ JOB DESCRIPTION:
 <<<JOB_DESCRIPTION
 ${jobDescription || ""}
 JOB_DESCRIPTION
+
+LOCAL ANALYSIS:
+- ATS score: ${analysis.atsScore.score}/100
+- Matched skills: ${analysis.skillsMatch.join(", ") || "None identified"}
+- Missing skills: ${analysis.missingSkills.join(", ") || "None identified"}
+- Missing keywords: ${analysis.missingKeywords.join(", ") || "None identified"}
+- Weaknesses: ${analysis.weaknesses.join(" | ") || "None identified"}
 
 RESUME:
 <<<RESUME
@@ -179,10 +114,16 @@ RESUME
 
   try {
     const parsed = parseJsonResponse(content);
-    return normalizeAnalysisResponse(parsed);
+    const suggestions = normalizeSuggestionsResponse(parsed);
+
+    if (suggestions.length === 0) {
+      throw new Error("Groq returned no suggestions");
+    }
+
+    return suggestions;
   } catch (error) {
-    console.error("Groq JSON parse failed:", content);
-    throw new Error("Invalid AI response format");
+    console.error("Groq suggestion JSON parse failed:", content);
+    throw new Error("Invalid AI suggestion format");
   }
 };
 
@@ -289,8 +230,8 @@ RESUME CONTEXT:
 - Job Title: ${resumeContext.jobTitle || 'Not specified'}
 - Company: ${resumeContext.companyName || 'Not specified'}
 - ATS Score: ${resumeContext.atsScore?.score || 0}/100 (${resumeContext.atsScore?.level || 'N/A'})
-- AI Score: ${resumeContext.aiScore || 'N/A'}
 - Semantic Score: ${resumeContext.semanticScore || 'N/A'}
+- Skill Match Score: ${resumeContext.skillScore || 'N/A'}
 
 SUMMARY:
 ${resumeContext.summary || 'No summary available'}

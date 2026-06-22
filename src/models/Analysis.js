@@ -18,6 +18,33 @@ const atsScoreSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const skillMatchSchema = new mongoose.Schema(
+  {
+    requiredSkill: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    matchedSkill: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    method: {
+      type: String,
+      enum: ["exact", "semantic", "missing"],
+      required: true,
+    },
+    similarity: {
+      type: Number,
+      default: 0,
+      min: -1,
+      max: 1,
+    },
+  },
+  { _id: false }
+);
+
 const analysisSchema = new mongoose.Schema(
   {
     user: {
@@ -104,6 +131,12 @@ const analysisSchema = new mongoose.Schema(
       default: [],
     },
 
+    suggestionSource: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     atsScore: {
       type: atsScoreSchema,
       default: () => ({}),
@@ -124,6 +157,31 @@ const analysisSchema = new mongoose.Schema(
     semanticScore: {
       type: Number,
       default: 0,
+    },
+
+    skillScore: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+
+    resumeQualityScore: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+
+    skillMatches: {
+      type: [skillMatchSchema],
+      default: [],
+    },
+
+    scoringMethod: {
+      type: String,
+      default: "",
+      trim: true,
     },
 
     aiScore: {

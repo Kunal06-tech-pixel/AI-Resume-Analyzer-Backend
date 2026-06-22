@@ -1,251 +1,116 @@
-# 📄 Resume Analysis Embedding Workflow
+# Resume Analysis and Embedding Workflow
 
-## Your Exact Workflow
+## Pipeline
 
+```text
+PDF/text input
+  -> text extraction
+  -> document embeddings and cosine similarity
+  -> local skill extraction
+  -> per-skill embedding comparison
+  -> local keyword and resume-quality analysis
+  -> weighted ATS score
+  -> Groq improvement suggestions
+  -> MongoDB storage and API response
 ```
-PDF Upload → Text Extraction → Generate Embeddings → Store in Vector DB → 
-AI Analysis → ATS Score → AI Suggestions
-```
 
-## Step-by-Step Process
+## 1. Document embeddings
 
-### 1. **PDF Upload** 
-- User uploads PDF resume via `/api/resume/upload`
-- File is temporarily stored using Multer
-
-### 2. **Text Extraction**
-- PDF is parsed using `pdf-parse` library
-- Text content is extracted from the PDF
-- Validates that text was successfully extracted
-
-### 3. **Generate Embeddings**
-- **Resume Embedding**: Text from resume → 384-dimensional vector
-- **Job Description Embedding**: Job description → 384-dimensional vector
 - Model: `Xenova/all-MiniLM-L6-v2`
-- Method: Mean pooling + normalization
+- Dimensions: 384
+- Pooling: mean
+- Normalization: enabled
+- The resume and job description vectors are compared with cosine similarity.
+- The result becomes the document semantic score from 0 to 100.
 
-### 4. **Store in Vector Database**
-- Embeddings stored in MongoDB (Analysis collection)
-- Each document contains:
-  - Resume embedding (384 dimensions)
-  - Original text metadata
-  - User information
-  - Job details
+## 2. Skill extraction and matching
 
-### 5. **Calculate Semantic Similarity**
-- Cosine similarity between resume and job description embeddings
-- Produces a semantic score (0-100%)
+The local skill catalogue contains canonical names, categories, and aliases. For example, `Postgres` is normalized to `PostgreSQL`, and `Amazon Web Services` is normalized to `AWS`.
 
-### 6. **AI Analysis**
-- Groq AI analyzes the resume text
-- Extracts:
-  - Skills detected
-  - Missing skills
-  - Strengths
-  - Weaknesses
-  - Experience analysis
-  - Role match assessment
+Matching uses two stages:
 
-### 7. **Hybrid ATS Score**
-- **AI Score** (70% weight): From Groq analysis
-- **Semantic Score** (30% weight): From embedding similarity
-- **Final Score** = (AI Score × 0.7) + (Semantic Score × 0.3)
-- Classification:
-  - 75-100: High
-  - 45-74: Medium
-  - 0-44: Low
+1. Exact canonical match after alias normalization.
+2. Per-skill embedding comparison for unmatched skills.
 
-### 8. **AI Suggestions**
-- Actionable recommendations to improve resume
-- Based on missing skills, weaknesses, and job requirements
+Semantic matches are restricted to the same skill category and require cosine similarity of at least `0.92`. This conservative threshold reduces false matches between related but non-equivalent tools.
 
-## API Endpoints
-
-### Upload & Analyze Resume
-```
-POST /api/resume/upload
-Headers: Authorization: Bearer <token>
-Body (multipart/form-data):
-  - resume: PDF file
-  - jobDescription: string
-  - jobTitle: string
-  - companyName: string (optional)
-```
-
-### Get All Analyses
-```
-GET /api/resume/analyses
-Headers: Authorization: Bearer <token>
-```
-
-### Get Single Analysis
-```
-GET /api/resume/analyses/:id
-Headers: Authorization: Bearer <token>
-```
-
-### Analyze Text (without PDF)
-```
-POST /api/resume/analyze-text
-Headers: Authorization: Bearer <token>
-Body (JSON):
-  - resumeText: string
-  - jobDescription: string
-  - jobTitle: string
-```
-
-## Response Format
+Each required job skill is stored with:
 
 ```json
 {
-  "success": true,
-  "analysis": {
-    "id": "...",
-    "fileName": "resume.pdf",
-    "jobTitle": "Software Developer",
-    "companyName": "TechCorp",
-    
-    "atsScore": {
-      "score": 65,
-      "level": "Medium"
-    },
-    
-    "aiScore": 70,
-    "semanticScore": 50,
-    "similarity": 0.50,
-    
-    "summary": "...",
-    "roleMatch": "...",
-    
-    "strengths": ["...", "..."],
-    "weaknesses": ["...", "..."],
-    
-    "skillsDetected": ["React", "Node.js", "..."],
-    "missingSkills": ["Docker", "AWS", "..."],
-    
-    "suggestions": [
-      "Add Agile experience",
-      "Highlight code review involvement",
-      "..."
-    ],
-    
-    "embeddingModel": "all-MiniLM-L6-v2",
-    "embeddingDimensions": 384,
-    "algorithm": "Cosine Similarity"
-  }
+  "requiredSkill": "AWS",
+  "matchedSkill": "",
+  "method": "missing",
+  "similarity": 0.58
 }
 ```
 
-## Database Schema
+Possible methods are `exact`, `semantic`, and `missing`.
 
-### Analysis Model
-```javascript
+## 3. Local ATS score
+
+When a job description is supplied:
+
+```text
+ATS Score = 45% Skill Match
+          + 30% Document Semantic Similarity
+          + 15% Keyword Coverage
+          + 10% Resume Quality
+```
+
+Resume quality checks common sections, contact details, suitable content length, bullet usage, and quantified impact. When no job description is supplied, the result is a resume-quality score rather than a job-fit score.
+
+Groq does not calculate any score and does not determine matched or missing skills.
+
+## 4. Groq suggestions
+
+After local analysis is complete, Groq receives the resume, job description, and calculated gaps. It returns one field only:
+
+```json
 {
-  user: ObjectId,
-  fileName: String,
-  jobTitle: String,
-  companyName: String,
-  jobDescription: String,
-  
-  // Embeddings
-  embedding: [Number],        // 384 dimensions
-  embeddingModel: String,     // "all-MiniLM-L6-v2"
-  embeddingDimensions: Number, // 384
-  
-  // Scores
-  similarity: Number,         // 0-1
-  semanticScore: Number,      // 0-100
-  aiScore: Number,           // 0-100
-  atsScore: {
-    score: Number,           // 0-100 (hybrid)
-    level: String            // "High", "Medium", "Low"
-  },
-  
-  // Analysis Results
-  summary: String,
-  roleMatch: String,
-  strengths: [String],
-  weaknesses: [String],
-  skillsDetected: [String],
-  missingSkills: [String],
-  suggestions: [String],
-  experienceAnalysis: String,
-  
-  timestamps: true
+  "suggestions": [
+    "Add truthful project evidence for Docker where applicable."
+  ]
 }
 ```
 
-## Console Logging
+If Groq is unavailable or returns invalid JSON, deterministic local fallback suggestions are returned so the analysis endpoint still succeeds.
 
-When you run the server, you'll see detailed logs for:
+## 5. Stored analysis fields
 
-1. **Model Loading**
-   - Embedding model initialization
+```text
+embedding              Resume vector
+embeddingModel         all-MiniLM-L6-v2
+embeddingDimensions    384
+similarity             Raw document cosine similarity
+semanticScore          Document similarity on a 0-100 scale
+skillScore             Embedding-assisted skill coverage
+keywordScore           Local keyword coverage
+resumeQualityScore     Local structure and evidence score
+skillMatches           Per-required-skill evidence and method
+atsScore               Final weighted score and level
+scoringMethod          Human-readable weighting description
+suggestions             Groq or fallback suggestions
+suggestionSource       groq or local-fallback
+```
 
-2. **PDF Processing**
-   - File details
-   - Text extraction progress
+The legacy `aiScore` field remains in the schema for old records but is `0` for new analyses.
 
-3. **Embedding Generation**
-   - Text preview
-   - Generation time
-   - Vector dimensions
-   - Sample values
+## 6. Main implementation files
 
-4. **Similarity Calculation**
-   - Vector dimensions
-   - Dot product
-   - Magnitudes
-   - Final similarity score
+- `src/data/skillCatalog.js`: canonical skill catalogue and aliases
+- `src/utils/embedding.js`: document and batch skill embeddings
+- `src/utils/skillMatcher.js`: exact and semantic skill matching
+- `src/services/localAnalysis.service.js`: local scoring and report generation
+- `src/services/groq.service.js`: suggestion generation, builder rewriting, and chat
+- `src/controllers/resume.controller.js`: PDF/text endpoint orchestration
+- `src/models/Analysis.js`: persisted analysis schema
 
-5. **Database Storage**
-   - Document ID
-   - Embedding storage confirmation
-   - Analysis metadata
-
-6. **AI Analysis**
-   - Groq API call
-   - Response parsing
-
-7. **Score Calculation**
-   - AI score
-   - Semantic score
-   - Hybrid score
-   - Final level
-
-## Testing
-
-Run the test scripts to verify the workflow:
+## 7. Verification
 
 ```bash
-# Test embedding generation
-node test-embedding.js
-
-# Test database storage and retrieval
-node test-db-embedding.js
-
-# Test complete workflow
-node test-complete-workflow.js
-
-# Test embedding search (optional)
-node test-embedding-search.js
+npm test
+npm run dev
 ```
 
-## Key Features
-
-✅ **PDF to Text**: Automatic extraction from PDF files
-✅ **Embeddings**: 384-dimensional semantic vectors
-✅ **Vector Storage**: MongoDB with embedding arrays
-✅ **AI Analysis**: Comprehensive resume evaluation
-✅ **Hybrid Scoring**: Combines AI + semantic similarity
-✅ **Actionable Suggestions**: Specific improvement recommendations
-✅ **Detailed Logging**: Full visibility into the process
-
-## Technologies Used
-
-- **@xenova/transformers**: Embedding generation (all-MiniLM-L6-v2)
-- **pdf-parse**: PDF text extraction
-- **Groq SDK**: AI analysis
-- **MongoDB**: Vector database storage
-- **Express**: REST API
-- **Multer**: File upload handling
+The unit tests cover alias normalization, exact skill matching, conservative semantic matching, missing skills, and category isolation.

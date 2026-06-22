@@ -94,7 +94,9 @@ async function testEmbeddingRetrieval() {
       console.log("\n📈 Analysis Scores:");
       console.log(`   - Similarity: ${(analysis.similarity * 100).toFixed(2)}%`);
       console.log(`   - Semantic Score: ${analysis.semanticScore || 'N/A'}`);
-      console.log(`   - AI Score: ${analysis.aiScore || 'N/A'}`);
+      console.log(`   - Skill Score: ${analysis.skillScore ?? 'Legacy record'}`);
+      console.log(`   - Keyword Score: ${analysis.keywordScore ?? 'Legacy record'}`);
+      console.log(`   - Resume Quality Score: ${analysis.resumeQualityScore ?? 'Legacy record'}`);
       console.log(`   - Final ATS Score: ${analysis.atsScore?.score || 0} (${analysis.atsScore?.level || 'N/A'})`);
 
       // Additional Analysis Data

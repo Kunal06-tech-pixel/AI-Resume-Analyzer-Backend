@@ -160,7 +160,7 @@ export const sendMessage = async (req, res) => {
       suggestions: analysis.suggestions,
       experienceAnalysis: analysis.experienceAnalysis,
       semanticScore: analysis.semanticScore,
-      aiScore: analysis.aiScore,
+      skillScore: analysis.skillScore,
     };
 
     // Get chat history (last 10 messages)

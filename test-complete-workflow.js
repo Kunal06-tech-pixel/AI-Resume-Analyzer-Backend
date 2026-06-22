@@ -73,7 +73,9 @@ async function testCompleteWorkflow() {
       
       // Step 4: AI Retrieval & Analysis (verify AI analysis was done)
       console.log("\n✅ Step 4: AI Analysis & Scoring");
-      console.log(`   - AI Score: ${analysis.aiScore || 'N/A'}`);
+      console.log(`   - Skill Score: ${analysis.skillScore ?? 'Legacy record'}`);
+      console.log(`   - Keyword Score: ${analysis.keywordScore ?? 'Legacy record'}`);
+      console.log(`   - Resume Quality Score: ${analysis.resumeQualityScore ?? 'Legacy record'}`);
       console.log(`   - Semantic Score: ${analysis.semanticScore || 'N/A'}`);
       console.log(`   - Final ATS Score: ${analysis.atsScore.score} (${analysis.atsScore.level})`);
       console.log(`   - Similarity: ${(analysis.similarity * 100).toFixed(2)}%`);

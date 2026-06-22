@@ -15,7 +15,7 @@ User uploads resume → Analysis with embeddings → Chat with AI using context
 The AI has access to:
 - ✅ Resume file name
 - ✅ Job title and company
-- ✅ ATS score (AI + Semantic + Hybrid)
+- ✅ Local ATS score (skills + semantic + keywords + resume quality)
 - ✅ Summary and role match
 - ✅ Strengths and weaknesses
 - ✅ Skills detected and missing
@@ -270,7 +270,7 @@ Message: "How can I improve my ATS score?..."
 
 3. **Address Weaknesses**: The analysis identified that you need to demonstrate Agile/Scrum experience. Consider adding any sprint work or team collaboration examples.
 
-Your semantic score (50%) suggests good keyword alignment, but your AI score (70%) shows room for content improvement. Focus on the suggestions above to reach a High score (75+)."
+Your local score breakdown shows which skill, semantic, keyword, and resume-quality signals need improvement. Focus on the missing skills and suggestions above to reach a High score (75+)."
 
 ## Testing
 

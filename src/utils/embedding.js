@@ -1,35 +1,38 @@
 import { pipeline } from "@xenova/transformers";
 
-// load model once
-console.log("🔧 Loading embedding model: Xenova/all-MiniLM-L6-v2...");
-const extractor = await pipeline(
-  "feature-extraction",
-  "Xenova/all-MiniLM-L6-v2"
-);
-console.log("✅ Embedding model loaded successfully\n");
+export const EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2";
 
-// generate embedding
-export const generateEmbedding = async (text) => {
-  const textPreview = text.substring(0, 100).replace(/\n/g, ' ');
-  console.log("🔍 Generating embedding for text:");
-  console.log(`   Preview: "${textPreview}..."`);
-  console.log(`   Length: ${text.length} characters`);
-  
+// Load once and reuse for document and skill embeddings.
+console.log(`Loading embedding model: ${EMBEDDING_MODEL}...`);
+const extractor = await pipeline("feature-extraction", EMBEDDING_MODEL);
+console.log("Embedding model loaded successfully\n");
+
+const cleanText = (text) => String(text || "").trim() || "No content provided";
+
+export const generateEmbeddings = async (texts) => {
+  const input = (Array.isArray(texts) ? texts : [texts]).map(cleanText);
   const startTime = Date.now();
-  
-  const output = await extractor(text, {
+
+  const output = await extractor(input, {
     pooling: "mean",
     normalize: true,
   });
 
-  const embedding = Array.from(output.data);
-  const endTime = Date.now();
-  
-  console.log(`✅ Embedding generated in ${endTime - startTime}ms`);
-  console.log(`   Dimensions: ${embedding.length}`);
-  console.log(`   First 5 values: [${embedding.slice(0, 5).map(v => v.toFixed(4)).join(", ")}]`);
-  console.log(`   Last 5 values: [${embedding.slice(-5).map(v => v.toFixed(4)).join(", ")}]`);
-  console.log("");
+  const values = Array.from(output.data);
+  const dimensions = output.dims?.at(-1) || values.length / input.length;
+  const embeddings = input.map((_, index) =>
+    values.slice(index * dimensions, (index + 1) * dimensions)
+  );
 
+  console.log(
+    `Generated ${embeddings.length} embedding(s) in ${Date.now() - startTime}ms ` +
+    `(${dimensions} dimensions)`
+  );
+
+  return embeddings;
+};
+
+export const generateEmbedding = async (text) => {
+  const [embedding] = await generateEmbeddings([text]);
   return embedding;
 };

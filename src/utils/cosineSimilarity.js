@@ -1,27 +1,25 @@
 export const cosineSimilarity = (vecA, vecB) => {
-  console.log("📊 Calculating cosine similarity...");
-  console.log(`   Vector A dimensions: ${vecA.length}`);
-  console.log(`   Vector B dimensions: ${vecB.length}`);
+  if (
+    !Array.isArray(vecA) ||
+    !Array.isArray(vecB) ||
+    vecA.length === 0 ||
+    vecA.length !== vecB.length
+  ) {
+    return 0;
+  }
 
   const dotProduct = vecA.reduce(
-    (sum, val, i) => sum + val * vecB[i],
+    (sum, value, index) => sum + value * vecB[index],
     0
   );
-
   const magnitudeA = Math.sqrt(
-    vecA.reduce((sum, val) => sum + val * val, 0)
+    vecA.reduce((sum, value) => sum + value * value, 0)
   );
-
   const magnitudeB = Math.sqrt(
-    vecB.reduce((sum, val) => sum + val * val, 0)
+    vecB.reduce((sum, value) => sum + value * value, 0)
   );
 
-  const similarity = dotProduct / (magnitudeA * magnitudeB);
-  
-  console.log(`   Dot Product: ${dotProduct.toFixed(4)}`);
-  console.log(`   Magnitude A: ${magnitudeA.toFixed(4)}`);
-  console.log(`   Magnitude B: ${magnitudeB.toFixed(4)}`);
-  console.log(`✅ Similarity Score: ${similarity.toFixed(4)} (${(similarity * 100).toFixed(2)}%)\n`);
+  if (magnitudeA === 0 || magnitudeB === 0) return 0;
 
-  return similarity;
+  return Math.max(-1, Math.min(1, dotProduct / (magnitudeA * magnitudeB)));
 };
